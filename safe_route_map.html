@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_d03605b7c2e93de237aa78163dafe091 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+<script>
+
+document.addEventListener("DOMContentLoaded", function(){
+
+var map = Object.values(window).find(obj => obj instanceof L.Map);
+
+var startMarker = null;
+var endMarker = null;
+
+var routeLines = [];
+var safetyMarkers = [];
+
+var clickCount = 0;
+
+var startPoint = null;
+var endPoint = null;
+
+map.on("click", function(e){
+
+    clickCount++;
+
+    if(clickCount === 1){
+
+        if(startMarker) map.removeLayer(startMarker);
+
+        startMarker = L.marker(e.latlng)
+        .addTo(map)
+        .bindPopup("Start")
+        .openPopup();
+
+        startPoint = e.latlng;
+
+    }
+
+    else if(clickCount === 2){
+
+        if(endMarker) map.removeLayer(endMarker);
+
+        endMarker = L.marker(e.latlng)
+        .addTo(map)
+        .bindPopup("Destination")
+        .openPopup();
+
+        endPoint = e.latlng;
+
+        clickCount = 0;
+
+        fetch("http://127.0.0.1:5000/route",{
+
+            method:"POST",
+
+            headers:{
+                "Content-Type":"application/json"
+            },
+
+            body:JSON.stringify({
+                start:[startPoint.lng,startPoint.lat],
+                end:[endPoint.lng,endPoint.lat]
+            })
+
+        })
+        .then(res=>res.json())
+        .then(routes=>{
+
+            if(!routes || routes.length === 0){
+                alert("No route found");
+                return;
+            }
+
+            routeLines.forEach(r=>map.removeLayer(r));
+            safetyMarkers.forEach(m=>map.removeLayer(m));
+
+            routeLines=[];
+            safetyMarkers=[];
+
+            /* DRAW ALTERNATE ROUTES FIRST */
+
+            routes.slice(1).forEach(function(route){
+
+                var poly=L.polyline(route.coords,{
+                    color:'red',
+                    weight:6,
+                    opacity:0.7
+                }).addTo(map);
+
+                routeLines.push(poly);
+
+                addSafetyMarker(route,"red");
+
+            });
+
+            /* DRAW SAFEST ROUTE LAST */
+
+            var safest=routes[0];
+
+            var safestLine=L.polyline(safest.coords,{
+                color:'green',
+                weight:8,
+                opacity:1
+            }).addTo(map);
+
+            routeLines.push(safestLine);
+
+            addSafetyMarker(safest,"green");
+
+            updatePanel(routes);
+
+        })
+        .catch(err=>{
+            console.log("Route error:",err);
+        });
+
+    }
+
+});
+
+
+function addSafetyMarker(route,color){
+
+    if(!route.coords || route.coords.length === 0) return;
+
+    var mid = route.coords[Math.floor(route.coords.length/2)];
+
+    var html =
+        '<div style="        background:'+color+';        color:white;        padding:12px 20px;        border-radius:12px;        font-weight:bold;        font-size:15px;        min-width:95px;        text-align:center;        box-shadow:0 4px 12px rgba(0,0,0,0.45);        ">        Safety '+route.safety+'        </div>';
+
+    var icon = L.divIcon({
+        className:'',
+        html:html
+    });
+
+    var marker = L.marker(mid,{icon:icon}).addTo(map);
+
+    safetyMarkers.push(marker);
+
+}
+
+
+function updatePanel(routes){
+
+let html = `
+<div style="
+position:fixed;
+top:20px;
+left:20px;
+background:white;
+padding:15px;
+border-radius:10px;
+box-shadow:0 0 15px rgba(0,0,0,0.3);
+z-index:9999;
+width:220px;
+font-family:sans-serif;
+">
+
+<b>SafeRoute Results</b><br><br>
+
+<span style="color:green">● Safest Route</span><br>
+Safety Score: ${routes[0].safety}<br>
+Distance: ${routes[0].distance} km<br><br>
+`;
+
+if(routes.length>1){
+
+html+=`
+<span style="color:red">● Alt Route 1</span><br>
+Safety Score: ${routes[1].safety}<br>
+Distance: ${routes[1].distance} km<br><br>
+`;
+
+}
+
+if(routes.length>2){
+
+html+=`
+<span style="color:red">● Alt Route 2</span><br>
+Safety Score: ${routes[2].safety}<br>
+Distance: ${routes[2].distance} km
+`;
+
+}
+
+html+="</div>";
+
+document.getElementById("result-panel")?.remove();
+
+let panel=document.createElement("div");
+
+panel.id="result-panel";
+
+panel.innerHTML=html;
+
+document.body.appendChild(panel);
+
+}
+
+});
+</script>
+    
+<div style="
+position:fixed;
+bottom:20px;
+left:20px;
+background:white;
+padding:12px;
+border-radius:8px;
+box-shadow:0 0 10px rgba(0,0,0,0.4);
+z-index:9999;
+font-size:14px;
+">
+Click map to select start and destination
+</div>
+    
+            <div class="folium-map" id="map_d03605b7c2e93de237aa78163dafe091" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_d03605b7c2e93de237aa78163dafe091 = L.map(
+                "map_d03605b7c2e93de237aa78163dafe091",
+                {
+                    center: [12.97, 77.59],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 13,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_4d903a32b1a3af1017009393e0c48f13 = L.tileLayer(
+                "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 20,
+  "maxNativeZoom": 20,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors \u0026copy; \u003ca href=\"https://carto.com/attributions\"\u003eCARTO\u003c/a\u003e",
+  "subdomains": "abcd",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_4d903a32b1a3af1017009393e0c48f13.addTo(map_d03605b7c2e93de237aa78163dafe091);
+        
+</script>
+</html>
