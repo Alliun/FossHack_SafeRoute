@@ -3,6 +3,7 @@ from flask_cors import CORS
 import geopandas as gpd
 import networkx as nx
 import math
+from scipy.spatial import KDTree
 
 print("Loading road dataset...")
 
@@ -22,7 +23,7 @@ def haversine(a, b):
     lon1, lat1 = a
     lon2, lat2 = b
 
-    R = 6371  # earth radius km
+    R = 6371
 
     dlon = math.radians(lon2 - lon1)
     dlat = math.radians(lat2 - lat1)
@@ -82,6 +83,7 @@ for _, row in roads.iterrows():
 print("Graph nodes:", len(G.nodes))
 print("Graph edges:", len(G.edges))
 
+
 # --------------------------------------------------
 # Keep Largest Connected Component
 # --------------------------------------------------
@@ -98,25 +100,29 @@ print("Nodes after cleaning:", len(nodes))
 
 
 # --------------------------------------------------
-# Nearest node
+# Build KDTree for fast spatial lookup
+# --------------------------------------------------
+
+print("Building KDTree spatial index...")
+
+node_coords = [(n[0], n[1]) for n in nodes]
+
+kdtree = KDTree(node_coords)
+
+print("KDTree built for", len(node_coords), "nodes")
+
+
+# --------------------------------------------------
+# Fast nearest node search using KDTree
 # --------------------------------------------------
 
 def nearest_node(point):
 
     px, py = point
 
-    best = None
-    best_dist = float("inf")
+    distance, index = kdtree.query((px, py))
 
-    for node in nodes:
-
-        d = (node[0]-px)**2 + (node[1]-py)**2
-
-        if d < best_dist:
-            best_dist = d
-            best = node
-
-    return best
+    return nodes[index]
 
 
 # --------------------------------------------------
@@ -196,6 +202,10 @@ def route():
 
     return jsonify(routes)
 
+
+# --------------------------------------------------
+# Start Server
+# --------------------------------------------------
 
 if __name__ == "__main__":
 

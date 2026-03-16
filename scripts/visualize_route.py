@@ -86,17 +86,18 @@ map.on("click", function(e){
 
             /* DRAW ALTERNATE ROUTES FIRST */
 
-            routes.slice(1).forEach(function(route){
+            routes.slice(1).forEach(function(route,index){
 
                 var poly=L.polyline(route.coords,{
                     color:'red',
                     weight:6,
-                    opacity:0.7
+                    opacity:0.7,
+                    dashArray:'6,8'
                 }).addTo(map);
 
                 routeLines.push(poly);
 
-                addSafetyMarker(route,"red");
+                addSafetyMarker(route,"red",index+1);
 
             });
 
@@ -106,13 +107,18 @@ map.on("click", function(e){
 
             var safestLine=L.polyline(safest.coords,{
                 color:'green',
-                weight:8,
+                weight:10,
                 opacity:1
             }).addTo(map);
 
             routeLines.push(safestLine);
 
-            addSafetyMarker(safest,"green");
+            addSafetyMarker(safest,"green",0);
+
+            /* AUTO ZOOM TO ROUTES */
+
+            var group = new L.featureGroup(routeLines);
+            map.fitBounds(group.getBounds());
 
             updatePanel(routes);
 
@@ -126,11 +132,29 @@ map.on("click", function(e){
 });
 
 
-function addSafetyMarker(route,color){
+function addSafetyMarker(route,color,index){
 
-    if(!route.coords || route.coords.length === 0) return;
+    if(!route.coords || route.coords.length === 0){
+        return;
+    }
 
-    var mid = route.coords[Math.floor(route.coords.length/2)];
+    /* POSITION MARKERS AT DIFFERENT POINTS */
+
+    let position;
+
+    if(index === 0){
+        position = 0.5;     // safest route
+    }
+    else if(index === 1){
+        position = 0.35;    // alt route 1
+    }
+    else{
+        position = 0.65;    // alt route 2
+    }
+
+    var pointIndex = Math.floor(route.coords.length * position);
+
+    var mid = route.coords[pointIndex];
 
     var html =
         '<div style="\

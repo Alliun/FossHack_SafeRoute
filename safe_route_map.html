@@ -17,7 +17,7 @@
             <meta name="viewport" content="width=device-width,
                 initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
             <style>
-                #map_d03605b7c2e93de237aa78163dafe091 {
+                #map_0d9b550d36002a8872ade10567fafb72 {
                     position: relative;
                     width: 100.0%;
                     height: 100.0%;
@@ -131,17 +131,18 @@ map.on("click", function(e){
 
             /* DRAW ALTERNATE ROUTES FIRST */
 
-            routes.slice(1).forEach(function(route){
+            routes.slice(1).forEach(function(route,index){
 
                 var poly=L.polyline(route.coords,{
                     color:'red',
                     weight:6,
-                    opacity:0.7
+                    opacity:0.7,
+                    dashArray:'6,8'
                 }).addTo(map);
 
                 routeLines.push(poly);
 
-                addSafetyMarker(route,"red");
+                addSafetyMarker(route,"red",index+1);
 
             });
 
@@ -151,13 +152,18 @@ map.on("click", function(e){
 
             var safestLine=L.polyline(safest.coords,{
                 color:'green',
-                weight:8,
+                weight:10,
                 opacity:1
             }).addTo(map);
 
             routeLines.push(safestLine);
 
-            addSafetyMarker(safest,"green");
+            addSafetyMarker(safest,"green",0);
+
+            /* AUTO ZOOM TO ROUTES */
+
+            var group = new L.featureGroup(routeLines);
+            map.fitBounds(group.getBounds());
 
             updatePanel(routes);
 
@@ -171,11 +177,29 @@ map.on("click", function(e){
 });
 
 
-function addSafetyMarker(route,color){
+function addSafetyMarker(route,color,index){
 
-    if(!route.coords || route.coords.length === 0) return;
+    if(!route.coords || route.coords.length === 0){
+        return;
+    }
 
-    var mid = route.coords[Math.floor(route.coords.length/2)];
+    /* POSITION MARKERS AT DIFFERENT POINTS */
+
+    let position;
+
+    if(index === 0){
+        position = 0.5;     // safest route
+    }
+    else if(index === 1){
+        position = 0.35;    // alt route 1
+    }
+    else{
+        position = 0.65;    // alt route 2
+    }
+
+    var pointIndex = Math.floor(route.coords.length * position);
+
+    var mid = route.coords[pointIndex];
 
     var html =
         '<div style="        background:'+color+';        color:white;        padding:12px 20px;        border-radius:12px;        font-weight:bold;        font-size:15px;        min-width:95px;        text-align:center;        box-shadow:0 4px 12px rgba(0,0,0,0.45);        ">        Safety '+route.safety+'        </div>';
@@ -266,14 +290,14 @@ font-size:14px;
 Click map to select start and destination
 </div>
     
-            <div class="folium-map" id="map_d03605b7c2e93de237aa78163dafe091" ></div>
+            <div class="folium-map" id="map_0d9b550d36002a8872ade10567fafb72" ></div>
         
 </body>
 <script>
     
     
-            var map_d03605b7c2e93de237aa78163dafe091 = L.map(
-                "map_d03605b7c2e93de237aa78163dafe091",
+            var map_0d9b550d36002a8872ade10567fafb72 = L.map(
+                "map_0d9b550d36002a8872ade10567fafb72",
                 {
                     center: [12.97, 77.59],
                     crs: L.CRS.EPSG3857,
@@ -290,7 +314,7 @@ Click map to select start and destination
 
         
     
-            var tile_layer_4d903a32b1a3af1017009393e0c48f13 = L.tileLayer(
+            var tile_layer_fe8f9b4a06b0b482906229648cf00392 = L.tileLayer(
                 "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
                 {
   "minZoom": 0,
@@ -307,7 +331,7 @@ Click map to select start and destination
             );
         
     
-            tile_layer_4d903a32b1a3af1017009393e0c48f13.addTo(map_d03605b7c2e93de237aa78163dafe091);
+            tile_layer_fe8f9b4a06b0b482906229648cf00392.addTo(map_0d9b550d36002a8872ade10567fafb72);
         
 </script>
 </html>
