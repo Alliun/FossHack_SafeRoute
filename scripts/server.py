@@ -3,6 +3,7 @@ from flask_cors import CORS
 import geopandas as gpd
 import networkx as nx
 import math
+import numpy as np
 from scipy.spatial import KDTree
 
 print("Loading road dataset...")
@@ -15,7 +16,7 @@ app = Flask(__name__)
 CORS(app)
 
 # --------------------------------------------------
-# Haversine distance (real km distance)
+# HAVERSINE DISTANCE
 # --------------------------------------------------
 
 def haversine(a, b):
@@ -39,7 +40,7 @@ def haversine(a, b):
 
 
 # --------------------------------------------------
-# Build Graph
+# BUILD GRAPH
 # --------------------------------------------------
 
 print("Building graph...")
@@ -54,7 +55,9 @@ for _, row in roads.iterrows():
         coords = list(geom.coords)
 
     elif geom.geom_type == "MultiLineString":
+
         coords = []
+
         for part in geom.geoms:
             coords += list(part.coords)
 
@@ -85,7 +88,7 @@ print("Graph edges:", len(G.edges))
 
 
 # --------------------------------------------------
-# Keep Largest Connected Component
+# CLEAN DISCONNECTED ROADS
 # --------------------------------------------------
 
 print("Cleaning disconnected roads...")
@@ -100,33 +103,33 @@ print("Nodes after cleaning:", len(nodes))
 
 
 # --------------------------------------------------
-# Build KDTree for fast spatial lookup
+# KD TREE SPATIAL INDEX
 # --------------------------------------------------
 
 print("Building KDTree spatial index...")
 
-node_coords = [(n[0], n[1]) for n in nodes]
+node_array = np.array(nodes)
 
-kdtree = KDTree(node_coords)
+tree = KDTree(node_array)
 
-print("KDTree built for", len(node_coords), "nodes")
+print("KDTree ready")
 
 
 # --------------------------------------------------
-# Fast nearest node search using KDTree
+# NEAREST NODE SEARCH
 # --------------------------------------------------
 
 def nearest_node(point):
 
     px, py = point
 
-    distance, index = kdtree.query((px, py))
+    distance, index = tree.query([px, py])
 
-    return nodes[index]
+    return tuple(node_array[index])
 
 
 # --------------------------------------------------
-# Route metrics
+# ROUTE METRICS
 # --------------------------------------------------
 
 def route_metrics(path):
@@ -147,7 +150,7 @@ def route_metrics(path):
 
 
 # --------------------------------------------------
-# API
+# ROUTE API
 # --------------------------------------------------
 
 @app.route("/route", methods=["POST"])
@@ -171,14 +174,14 @@ def route():
 
     try:
 
-        generator = nx.shortest_simple_paths(
+        paths = nx.shortest_simple_paths(
             G,
             start_node,
             end_node,
             weight="weight"
         )
 
-        for i, path in enumerate(generator):
+        for i, path in enumerate(paths):
 
             if i == 3:
                 break
@@ -193,9 +196,10 @@ def route():
                 "distance": distance
             })
 
-    except Exception as e:
+    except nx.NetworkXNoPath:
 
-        print("Routing error:", e)
+        print("No path found")
+
         return jsonify([])
 
     print("Routes returned:", len(routes))
@@ -204,7 +208,7 @@ def route():
 
 
 # --------------------------------------------------
-# Start Server
+# START SERVER
 # --------------------------------------------------
 
 if __name__ == "__main__":

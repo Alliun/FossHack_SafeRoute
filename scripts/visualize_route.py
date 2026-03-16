@@ -1,12 +1,71 @@
 import folium
+import geopandas as gpd
+import branca.colormap as cm
+
+print("Loading safety dataset...")
+
+roads = gpd.read_file("geo/bangalore_roads_with_safety.geojson")
+
+# --------------------------------------------------
+# DATASET OPTIMIZATION
+# --------------------------------------------------
+
+print("Optimizing dataset...")
+
+# simplify geometry (reduces coordinate complexity)
+roads["geometry"] = roads.geometry.simplify(0.0002, preserve_topology=True)
+
+# sample only 30% of roads to reduce rendering load
+roads = roads.sample(frac=0.3)
 
 print("Creating SafeRoute map...")
 
 m = folium.Map(
-    location=[12.97,77.59],
+    location=[12.97, 77.59],
     zoom_start=13,
     tiles="CartoDB positron"
 )
+
+# --------------------------------------------------
+# FAST SAFETY HEATMAP
+# --------------------------------------------------
+
+print("Rendering safety heatmap...")
+
+colormap = cm.LinearColormap(
+    colors=["#ff0000", "#ffff00", "#00ff00"],
+    index=[0, 0.5, 1],
+    vmin=0,
+    vmax=1
+)
+
+def style_function(feature):
+
+    safety = feature["properties"].get("safety_score", 0.5)
+
+    if safety is None:
+        safety = 0.5
+
+    safety = max(0, min(1, safety))
+
+    return {
+        "color": colormap(safety),
+        "weight": 2,
+        "opacity": 0.8
+    }
+
+folium.GeoJson(
+    roads,
+    style_function=style_function,
+    name="Safety Heatmap"
+).add_to(m)
+
+colormap.caption = "Road Safety Score"
+colormap.add_to(m)
+
+# --------------------------------------------------
+# ROUTING SCRIPT
+# --------------------------------------------------
 
 click_script = """
 <script>
@@ -84,8 +143,6 @@ map.on("click", function(e){
             routeLines=[];
             safetyMarkers=[];
 
-            /* DRAW ALTERNATE ROUTES FIRST */
-
             routes.slice(1).forEach(function(route,index){
 
                 var poly=L.polyline(route.coords,{
@@ -101,8 +158,6 @@ map.on("click", function(e){
 
             });
 
-            /* DRAW SAFEST ROUTE LAST */
-
             var safest=routes[0];
 
             var safestLine=L.polyline(safest.coords,{
@@ -114,8 +169,6 @@ map.on("click", function(e){
             routeLines.push(safestLine);
 
             addSafetyMarker(safest,"green",0);
-
-            /* AUTO ZOOM TO ROUTES */
 
             var group = new L.featureGroup(routeLines);
             map.fitBounds(group.getBounds());
@@ -138,18 +191,16 @@ function addSafetyMarker(route,color,index){
         return;
     }
 
-    /* POSITION MARKERS AT DIFFERENT POINTS */
-
     let position;
 
     if(index === 0){
-        position = 0.5;     // safest route
+        position = 0.5;
     }
     else if(index === 1){
-        position = 0.35;    // alt route 1
+        position = 0.35;
     }
     else{
-        position = 0.65;    // alt route 2
+        position = 0.65;
     }
 
     var pointIndex = Math.floor(route.coords.length * position);
@@ -246,6 +297,9 @@ document.body.appendChild(panel);
 
 m.get_root().html.add_child(folium.Element(click_script))
 
+# --------------------------------------------------
+# INSTRUCTION PANEL
+# --------------------------------------------------
 
 panel="""
 <div style="
