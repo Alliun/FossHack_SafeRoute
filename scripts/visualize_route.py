@@ -1,67 +1,69 @@
 import folium
 import geopandas as gpd
+import random
+import math
 import branca.colormap as cm
 
-print("Loading safety dataset...")
+print("Loading dataset...")
 
 roads = gpd.read_file("geo/bangalore_roads_with_safety.geojson")
 
-# --------------------------------------------------
-# DATASET OPTIMIZATION
-# --------------------------------------------------
+# OPTIONAL CLEAN (recommended)
+roads = roads.dropna(subset=["safety_score"])
 
-print("Optimizing dataset...")
-
-# simplify geometry (reduces coordinate complexity)
-roads["geometry"] = roads.geometry.simplify(0.0002, preserve_topology=True)
-
-# sample only 30% of roads to reduce rendering load
-roads = roads.sample(frac=0.3)
-
-print("Creating SafeRoute map...")
+print("Creating map...")
 
 m = folium.Map(
     location=[12.97, 77.59],
     zoom_start=13,
-    tiles="CartoDB positron"
+    tiles="CartoDB positron"   # LIGHT THEME
 )
 
 # --------------------------------------------------
-# FAST SAFETY HEATMAP
+# ROAD SAFETY VISUALIZATION (STABLE)
 # --------------------------------------------------
 
-print("Rendering safety heatmap...")
+print("Rendering road safety layer...")
+
+min_safety = roads["safety_score"].min()
+max_safety = roads["safety_score"].max()
 
 colormap = cm.LinearColormap(
-    colors=["#ff0000", "#ffff00", "#00ff00"],
-    index=[0, 0.5, 1],
-    vmin=0,
-    vmax=1
+    colors=["red", "yellow", "green"],
+    vmin=min_safety,
+    vmax=max_safety
 )
+
+colormap.caption = "Road Safety Score"
+colormap.add_to(m)
+
+# sample roads for performance
+sample_roads = roads.sample(frac=0.15)
 
 def style_function(feature):
 
     safety = feature["properties"].get("safety_score", 0.5)
 
+    # FIX: handle invalid values
     if safety is None:
         safety = 0.5
 
-    safety = max(0, min(1, safety))
+    try:
+        if math.isnan(safety):
+            safety = 0.5
+    except:
+        pass
 
     return {
         "color": colormap(safety),
         "weight": 2,
-        "opacity": 0.8
+        "opacity": 0.7
     }
 
 folium.GeoJson(
-    roads,
-    style_function=style_function,
-    name="Safety Heatmap"
+    sample_roads,
+    style_function=style_function
 ).add_to(m)
-
-colormap.caption = "Road Safety Score"
-colormap.add_to(m)
 
 # --------------------------------------------------
 # ROUTING SCRIPT
@@ -143,32 +145,34 @@ map.on("click", function(e){
             routeLines=[];
             safetyMarkers=[];
 
+            // ALT ROUTES
             routes.slice(1).forEach(function(route,index){
 
                 var poly=L.polyline(route.coords,{
-                    color:'red',
-                    weight:6,
+                    color:'#ff4d4d',
+                    weight:5,
                     opacity:0.7,
                     dashArray:'6,8'
                 }).addTo(map);
 
                 routeLines.push(poly);
 
-                addSafetyMarker(route,"red",index+1);
+                addSafetyMarker(route,"#ff4d4d",index+1);
 
             });
 
+            // SAFEST ROUTE
             var safest=routes[0];
 
             var safestLine=L.polyline(safest.coords,{
-                color:'green',
-                weight:10,
+                color:'#00cc66',
+                weight:8,
                 opacity:1
             }).addTo(map);
 
             routeLines.push(safestLine);
 
-            addSafetyMarker(safest,"green",0);
+            addSafetyMarker(safest,"#00994d",0);
 
             var group = new L.featureGroup(routeLines);
             map.fitBounds(group.getBounds());
@@ -191,17 +195,7 @@ function addSafetyMarker(route,color,index){
         return;
     }
 
-    let position;
-
-    if(index === 0){
-        position = 0.5;
-    }
-    else if(index === 1){
-        position = 0.35;
-    }
-    else{
-        position = 0.65;
-    }
+    let position = (index === 0) ? 0.5 : (index === 1 ? 0.35 : 0.65);
 
     var pointIndex = Math.floor(route.coords.length * position);
 
@@ -211,13 +205,13 @@ function addSafetyMarker(route,color,index){
         '<div style="\
         background:'+color+';\
         color:white;\
-        padding:12px 20px;\
-        border-radius:12px;\
-        font-weight:bold;\
-        font-size:15px;\
-        min-width:95px;\
+        padding:6px 10px;\
+        border-radius:8px;\
+        font-weight:600;\
+        font-size:12px;\
         text-align:center;\
-        box-shadow:0 4px 12px rgba(0,0,0,0.45);\
+        box-shadow:0 2px 8px rgba(0,0,0,0.3);\
+        min-width:70px;\
         ">\
         Safety '+route.safety+'\
         </div>';
@@ -230,7 +224,6 @@ function addSafetyMarker(route,color,index){
     var marker = L.marker(mid,{icon:icon}).addTo(map);
 
     safetyMarkers.push(marker);
-
 }
 
 
@@ -244,37 +237,33 @@ left:20px;
 background:white;
 padding:15px;
 border-radius:10px;
-box-shadow:0 0 15px rgba(0,0,0,0.3);
+box-shadow:0 0 12px rgba(0,0,0,0.25);
 z-index:9999;
-width:220px;
+width:230px;
 font-family:sans-serif;
 ">
 
 <b>SafeRoute Results</b><br><br>
 
-<span style="color:green">● Safest Route</span><br>
-Safety Score: ${routes[0].safety}<br>
+<span style="color:#00cc66">● Safest Route</span><br>
+Safety: ${routes[0].safety}<br>
 Distance: ${routes[0].distance} km<br><br>
 `;
 
 if(routes.length>1){
-
 html+=`
-<span style="color:red">● Alt Route 1</span><br>
-Safety Score: ${routes[1].safety}<br>
+<span style="color:#ff4d4d">● Alt Route 1</span><br>
+Safety: ${routes[1].safety}<br>
 Distance: ${routes[1].distance} km<br><br>
 `;
-
 }
 
 if(routes.length>2){
-
 html+=`
-<span style="color:red">● Alt Route 2</span><br>
-Safety Score: ${routes[2].safety}<br>
+<span style="color:#ff4d4d">● Alt Route 2</span><br>
+Safety: ${routes[2].safety}<br>
 Distance: ${routes[2].distance} km
 `;
-
 }
 
 html+="</div>";
@@ -282,13 +271,9 @@ html+="</div>";
 document.getElementById("result-panel")?.remove();
 
 let panel=document.createElement("div");
-
 panel.id="result-panel";
-
 panel.innerHTML=html;
-
 document.body.appendChild(panel);
-
 }
 
 });
@@ -307,11 +292,11 @@ position:fixed;
 bottom:20px;
 left:20px;
 background:white;
-padding:12px;
+padding:10px;
 border-radius:8px;
-box-shadow:0 0 10px rgba(0,0,0,0.4);
+box-shadow:0 0 8px rgba(0,0,0,0.25);
 z-index:9999;
-font-size:14px;
+font-size:13px;
 ">
 Click map to select start and destination
 </div>
@@ -321,4 +306,4 @@ m.get_root().html.add_child(folium.Element(panel))
 
 m.save("safe_route_map.html")
 
-print("Map generated successfully")
+print("Map generated successfully") 
